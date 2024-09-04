@@ -36,6 +36,10 @@
 
                 this._markers = [];
 
+                this.getMap = () => {
+                    return $scope.map;
+                };
+
                 /**
                  * Add marker
                  * @param {DG.Marker} marker
@@ -92,9 +96,14 @@
                     $log.error("angular-dg-maps: map zoom property not set");
                     return;
                 }
-                
-                DG.then(function () {
-                    
+
+                let init = () => {
+
+                    if( ! DG.ready){
+                        $timeout(() => init(), 1000);
+                        return;
+                    }
+
                     var mapParams = {
                         zoom: scope.zoom,
                         fullscreenControl:false,
@@ -236,12 +245,38 @@
                     _m.on('dragend', function() {
                         dragging = false;
                     });
-                    
-                });
+                };
+
+                DG.then(() => init());
             }
         };
 
     }]);
+
+    dgMapsModule.directive("dgPolygon", ["$log", function($log) {
+        return {
+            restrict: "E",
+            require: "^dgMap",
+            scope: {
+                points: "=",
+                dgClick: '&ngClick',
+                color: '='
+            },
+            link: function(scope, element, attrs, dgMapCtrl) {
+
+                let poligon = null;
+                scope.$watch('points', () => {
+                    poligon = new DG.Polygon(scope.points, {color: scope.color});
+
+                    poligon.addTo(dgMapCtrl.getMap());
+                });
+
+                element.bind('$destroy', function() {
+                    poligon.removeFrom(dgMapCtrl.getMap());
+                });
+            }
+        };
+    }])
 
     dgMapsModule.directive("dgMarker", ["$log", function($log) {
         return {
@@ -260,112 +295,114 @@
                 dragStart: '&'
             },
             link: function(scope, element, attrs, dgMapCtrl) {
-                
-                var markerConfig = {
-                    draggable: !!attrs.draggable,
-                    title: attrs.hint
-                };
 
-                if (angular.isDefined(scope.alt)) {
-                    angular.extend(markerConfig, {alt: scope.alt});
-                }
-
-                var marker = new DG.marker([scope.lat, scope.lon], markerConfig);
-
-                if (angular.isDefined(scope.popup) && scope.popup) {
-                    marker.bindPopup(scope.popup);
-                }
-                
-                if(angular.isDefined(attrs.ngClick)) {
-                    marker.on('click', function(evt){
-                        var cb = scope.dgClick() || angular.noop;
-                        cb(evt);
-                    });
-                }
-
-                marker.on('dragstart', function (evt) {
-                    var pos = marker.getLatLng();
+                DG.then(() => {
+                    var markerConfig = {
+                        draggable: !!attrs.draggable,
+                        title: attrs.hint
+                    };
+    
+                    if (angular.isDefined(scope.alt)) {
+                        angular.extend(markerConfig, {alt: scope.alt});
+                    }
+    
+                    var marker = new DG.marker([scope.lat, scope.lon], markerConfig);
+    
+                    if (angular.isDefined(scope.popup) && scope.popup) {
+                        marker.bindPopup(scope.popup);
+                    }
                     
-                    scope.$apply(function() {
-                        scope.lat  = pos.lat;
-                        scope.lon = pos.lng;
-                    });
-                    
-                    var cb = scope.dragStart() || angular.noop;
-                    cb.call(marker, evt);
-                });
-
-                marker.on('dragend', function (evt) {
-                    var pos = marker.getLatLng();
-                    
-                    scope.$apply(function() {
-                        scope.lat  = pos.lat;
-                        scope.lon = pos.lng;
-                    });
-                    
-                    var cb = scope.dragStop() || angular.noop;
-                    cb.call(marker, evt);
-                });
-
-                if(attrs.iconSrc) {
-                    if(angular.isDefined(attrs.iconWidth) && angular.isDefined(attrs.iconHeight)) {
-                        var icon = new DG.Icon({
-                            iconUrl: attrs.iconSrc,
-                            iconSize: [
-                                parseInt(attrs.iconWidth, 10), 
-                                parseInt(attrs.iconHeight, 10)
-                            ]
+                    if(angular.isDefined(attrs.ngClick)) {
+                        marker.on('click', function(evt){
+                            var cb = scope.dgClick() || angular.noop;
+                            cb(evt);
                         });
-                        marker.setIcon(icon);
-                    } else {
-                        $log.error("angular-dg-marker: icon width and height should be specified");
                     }
-                }
-
-                dgMapCtrl.addMarker(marker);
-
-                // Watch for marker's position on scope and update DG.Marker when needed
-                scope.$watch('lon', function(lon) {
-                    if(!angular.isDefined(lon)) {
-                        return;
+    
+                    marker.on('dragstart', function (evt) {
+                        var pos = marker.getLatLng();
+                        
+                        scope.$apply(function() {
+                            scope.lat  = pos.lat;
+                            scope.lon = pos.lng;
+                        });
+                        
+                        var cb = scope.dragStart() || angular.noop;
+                        cb.call(marker, evt);
+                    });
+    
+                    marker.on('dragend', function (evt) {
+                        var pos = marker.getLatLng();
+                        
+                        scope.$apply(function() {
+                            scope.lat  = pos.lat;
+                            scope.lon = pos.lng;
+                        });
+                        
+                        var cb = scope.dragStop() || angular.noop;
+                        cb.call(marker, evt);
+                    });
+    
+                    if(attrs.iconSrc) {
+                        if(angular.isDefined(attrs.iconWidth) && angular.isDefined(attrs.iconHeight)) {
+                            var icon = new DG.Icon({
+                                iconUrl: attrs.iconSrc,
+                                iconSize: [
+                                    parseInt(attrs.iconWidth, 10), 
+                                    parseInt(attrs.iconHeight, 10)
+                                ]
+                            });
+                            marker.setIcon(icon);
+                        } else {
+                            $log.error("angular-dg-marker: icon width and height should be specified");
+                        }
                     }
-                    
-                    var pos = marker.getLatLng();
-                    pos.lng = lon;
-                    marker.setLatLng(pos);
-                });
-
-                scope.$watch('lat', function(lat) {
-                    if(!angular.isDefined(lat)) {
-                        return;
-                    }
-
-                    var pos = marker.getLatLng();
-                    pos.lat = lat;
-                    marker.setLatLng(pos);
-                });
-
-                scope.$watch('hint', function(hint) {
-                    if(!angular.isDefined(hint)) {
-                        return;
-                    }
-
-                    marker.bindLabel(hint);
-                });
-
-                scope.$watch('draggable', function(draggable) {
-                    if(!angular.isDefined(draggable)) {
-                        return;
-                    }
-
-                    if(marker.dragging){
-                        marker.dragging[(draggable ? 'enable' : 'disable')]();
-                    }
-
-                });
-
-                element.bind('$destroy', function() {
-                    dgMapCtrl.removeMarker(marker);
+    
+                    dgMapCtrl.addMarker(marker);
+    
+                    // Watch for marker's position on scope and update DG.Marker when needed
+                    scope.$watch('lon', function(lon) {
+                        if(!angular.isDefined(lon)) {
+                            return;
+                        }
+                        
+                        var pos = marker.getLatLng();
+                        pos.lng = lon;
+                        marker.setLatLng(pos);
+                    });
+    
+                    scope.$watch('lat', function(lat) {
+                        if(!angular.isDefined(lat)) {
+                            return;
+                        }
+    
+                        var pos = marker.getLatLng();
+                        pos.lat = lat;
+                        marker.setLatLng(pos);
+                    });
+    
+                    scope.$watch('hint', function(hint) {
+                        if(!angular.isDefined(hint)) {
+                            return;
+                        }
+    
+                        marker.bindLabel(hint);
+                    });
+    
+                    scope.$watch('draggable', function(draggable) {
+                        if(!angular.isDefined(draggable)) {
+                            return;
+                        }
+    
+                        if(marker.dragging){
+                            marker.dragging[(draggable ? 'enable' : 'disable')]();
+                        }
+    
+                    });
+    
+                    element.bind('$destroy', function() {
+                        dgMapCtrl.removeMarker(marker);
+                    });
                 });
             }
         };
