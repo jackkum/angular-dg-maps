@@ -265,7 +265,11 @@
             link: function(scope, element, attrs, dgMapCtrl) {
 
                 let poligon = null;
-                scope.$watch('points', () => {
+                scope.$watchCollection('points', () => {
+                    if(poligon){
+                        poligon.removeFrom(dgMapCtrl.getMap());
+                    }
+                    
                     poligon = new DG.Polygon(scope.points, {color: scope.color});
 
                     poligon.addTo(dgMapCtrl.getMap());
